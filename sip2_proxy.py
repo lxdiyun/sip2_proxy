@@ -1,6 +1,16 @@
-import io
-import traceback
+#!/usr/bin/env python2
+
+import logging
+import sys
+import asyncore
 import socket
+import gevent
+import os
+from gevent.server import StreamServer
+
+PROXY_PORT = 6001
+
+logger = None
 
 sip2_server_list = [
     ("10.35.24.43", 6001),
@@ -8,55 +18,87 @@ sip2_server_list = [
 ]
 
 
-class Sipe2Router(object):
-    def lookup(self):
-#        return sip2_server_list[0]
+def config_logger():
+    global logger
+    """
+    Set the log level and choose the destination for log output.
+    """
+    logger = logging.getLogger(__name__)
 
-        for server in sip2_server_list:
-            print(server)
-            avaiable = True
-            s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            s.settimeout(1)
-            try:
-                s.connect(server)
-            except socket.error as msg:
-                print(msg)
-                avaiable = False
-            s.close()
-            print(avaiable)
-            if avaiable:
-                return server
+    handler = logging.StreamHandler()
 
-        return sip2_server_list[-1]
-
-router = Sipe2Router()
-
-# Perform content-aware routing based on the stream data. Here, the
-# Host header information from the HTTP protocol is parsed to find the
-# username and a lookup routine is run on the name to find the correct
-# couchdb node. If no match can be made yet, do nothing with the
-# connection. (make your own couchone server...)
+    logger.setLevel(logging.DEBUG)
+    fmt = logging.Formatter('%(asctime)s %(levelname)s %(message)s')
+    handler.setFormatter(fmt)
+    logger.addHandler(handler)
 
 
-def proxy(data):
-    traceback.print_stack()
-    host = router.lookup()
-    return {"remote": host}
+def accept_client(socket, address):
+    logger.info('New connection from %s:%s' % address)
+    fileobj = socket.makefile()
 
-
-def rewrite_request(req):
     while True:
-        data = req.read(io.DEFAULT_BUFFER_SIZE)
-        print("SEND: %s" % data)
-        if not data:
+        line = fileobj.readline()
+        if not line:
+            logger.info("client %s:%s disconnected" % address)
             break
-        req.writeall(data)
+        if line.strip().lower() == 'quit':
+            logger.info("client %s:%s quit" % address)
+            break
+        fileobj.write(line)
+        fileobj.flush()
+        logger.info("echoed %s %r" % (address, line))
 
 
-def rewrite_response(resp):
-    while True:
-        data = resp.read(io.DEFAULT_BUFFER_SIZE)
-        print("GET: %s" % data)
-        if not data:
-            break
-        resp.writeall(data)
+def main():
+    server = StreamServer(('0.0.0.0', PROXY_PORT), accept_client)
+    server.serve_forever()
+
+
+class Sip2Handler(asyncore.dispatcher_with_send):
+
+    def handle_read(self):
+        data = self.recv(8192)
+        if data:
+            self.send(data)
+
+
+class Sip2ProxyServer(asyncore.dispatcher):
+
+    def __init__(self, host, port):
+        asyncore.dispatcher.__init__(self)
+        self.create_socket(socket.AF_INET, socket.SOCK_STREAM)
+        self.set_reuse_addr()
+        self.bind((host, port))
+        self.listen(5)
+
+    def handle_accept(self):
+        pair = self.accept()
+        if pair is not None:
+            sock, addr = pair
+            logger.info('Incoming connection from %s' % repr(addr))
+            handler = Sip2Handler(sock)
+            logger.debug(handler)
+
+
+class Sip2Client(asyncore.dispatcher):
+    def __init__(self, host):
+        asyncore.dispatcher.__init__(self)
+        self.create_socket(socket.AF_INET, socket.SOCK_STREAM)
+        self.host = host
+        self.avaiable = False
+        self.conect(self.host)
+
+    def handle_close(self):
+        self.close()
+        self.avaiable = False
+        self.connect(self.host)
+
+    def handle_connect(self):
+        self.avaiable = True
+
+
+if __name__ == "__main__":
+    config_logger()
+    server = Sip2ProxyServer('0.0.0.0', PROXY_PORT)
+    asyncore.loop()
