@@ -1,12 +1,10 @@
 #!/usr/bin/env python2
 
 import logging
-import sys
 import asyncore
 import socket
-import gevent
-import os
 from gevent.server import StreamServer
+from asyncore_delay import CallLater, loop
 
 PROXY_PORT = 6001
 
@@ -82,23 +80,33 @@ class Sip2ProxyServer(asyncore.dispatcher):
 
 
 class Sip2Client(asyncore.dispatcher):
+    def setup_socket(self):
+        self.avaiable = False
+        self.create_socket(socket.AF_INET, socket.SOCK_STREAM)
+        self.connect(self.host)
+
     def __init__(self, host):
         asyncore.dispatcher.__init__(self)
-        self.create_socket(socket.AF_INET, socket.SOCK_STREAM)
         self.host = host
-        self.avaiable = False
-        self.conect(self.host)
+        self.setup_socket()
 
     def handle_close(self):
+        logger.warning("Server %s:%s close" % self.host)
         self.close()
         self.avaiable = False
-        self.connect(self.host)
+        CallLater(1, self.setup_socket)
 
     def handle_connect(self):
         self.avaiable = True
+
+    def handle_error(self):
+        nil, t, v, tbinfo = asyncore.compact_traceback()
+        logger.error("Server %s (%s:%s" % (self.host, t, v))
+        self.handle_close()
 
 
 if __name__ == "__main__":
     config_logger()
     server = Sip2ProxyServer('0.0.0.0', PROXY_PORT)
-    asyncore.loop()
+    client = Sip2Client(("127.0.0.1", 9999))
+    loop()
