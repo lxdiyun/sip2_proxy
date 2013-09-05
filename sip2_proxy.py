@@ -3,6 +3,7 @@
 import logging
 import asyncore
 import socket
+import traceback
 from gevent.server import StreamServer
 from asyncore_delay import CallLater, loop
 
@@ -14,6 +15,8 @@ sip2_server_list = [
     ("10.35.24.43", 6001),
     ("192.168.64.52", 6011),
 ]
+
+sip2_server_socks = list()
 
 
 def config_logger():
@@ -53,16 +56,70 @@ def main():
     server.serve_forever()
 
 
-class Sip2Handler(asyncore.dispatcher_with_send):
+class Sip2Sock(asyncore.dispatcher):
+    write_buffer = ''
+    other = None
+
+    def readable(self):
+        if self.other:
+            return not self.other.write_buffer
+        else:
+            return False
 
     def handle_read(self):
-        data = self.recv(8192)
-        if data:
-            self.send(data)
+        if self.other:
+            self.other.write_buffer += self.recv(4096*4)
+
+    def handle_write(self):
+        if self.other:
+            sent = self.send(self.write_buffer)
+            self.write_buffer = self.write_buffer[sent:]
+
+    def handle_close(self):
+        logger.info(' [-] %i -> %i (closed)' %
+                    (self.getsockname()[1], self.getpeername()[1]))
+        self.close()
+
+
+class Sip2Server(Sip2Sock):
+    def check_status(self):
+        if not self.avaiable:
+            logger.error("Server %s:%s connect timeout" % self.host)
+            self.handle_close()
+
+    def setup_socket(self):
+        logger.info("Try connect to %s:%s" % self.host)
+        self.avaiable = False
+        self.create_socket(socket.AF_INET, socket.SOCK_STREAM)
+        CallLater(1, self.check_status)
+        self.connect(self.host)
+
+    def __init__(self, host):
+        asyncore.dispatcher.__init__(self)
+        self.host = host
+        self.setup_socket()
+
+    def handle_close(self):
+        logger.warning("Server %s:%s close" % self.host)
+        self.close()
+        if self.other:
+            self.other.close()
+            self.other = None
+        self.avaiable = False
+        CallLater(1, self.setup_socket)
+
+    def handle_connect(self):
+        logger.info("Server %s:%s connected" % self.host)
+        self.avaiable = True
+
+    def handle_error(self):
+        traceback.print_stack()
+        nil, t, v, tbinfo = asyncore.compact_traceback()
+        logger.error("Server %s (%s:%s" % (self.host, t, v))
+        self.handle_close()
 
 
 class Sip2ProxyServer(asyncore.dispatcher):
-
     def __init__(self, host, port):
         asyncore.dispatcher.__init__(self)
         self.create_socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -75,38 +132,14 @@ class Sip2ProxyServer(asyncore.dispatcher):
         if pair is not None:
             sock, addr = pair
             logger.info('Incoming connection from %s' % repr(addr))
-            handler = Sip2Handler(sock)
-            logger.debug(handler)
-
-
-class Sip2Client(asyncore.dispatcher):
-    def setup_socket(self):
-        self.avaiable = False
-        self.create_socket(socket.AF_INET, socket.SOCK_STREAM)
-        self.connect(self.host)
-
-    def __init__(self, host):
-        asyncore.dispatcher.__init__(self)
-        self.host = host
-        self.setup_socket()
-
-    def handle_close(self):
-        logger.warning("Server %s:%s close" % self.host)
-        self.close()
-        self.avaiable = False
-        CallLater(1, self.setup_socket)
-
-    def handle_connect(self):
-        self.avaiable = True
-
-    def handle_error(self):
-        nil, t, v, tbinfo = asyncore.compact_traceback()
-        logger.error("Server %s (%s:%s" % (self.host, t, v))
-        self.handle_close()
+            client_sock = Sip2Sock(sock)
+            client_sock.other = sip2_server_socks[0]
+            sip2_server_socks[0].other = client_sock
 
 
 if __name__ == "__main__":
     config_logger()
-    server = Sip2ProxyServer('0.0.0.0', PROXY_PORT)
-    client = Sip2Client(("127.0.0.1", 9999))
+    proxy_server = Sip2ProxyServer('0.0.0.0', PROXY_PORT)
+    sip2_server = Sip2Server(("10.35.24.43", 6001))
+    sip2_server_socks.append(sip2_server)
     loop()
