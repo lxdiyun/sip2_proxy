@@ -12,7 +12,10 @@ logger = None
 
 sip2_server_list = [
     ("10.35.24.43", 6001),
-    ("192.168.64.52", 6011),
+    ("10.35.24.43", 6003),
+    ("10.35.24.43", 6005),
+    ("10.35.24.43", 6007),
+    ("10.35.24.43", 6009),
 ]
 
 sip2_server_socks = list()
@@ -27,7 +30,7 @@ def config_logger():
 
     handler = logging.StreamHandler()
 
-    logger.setLevel(logging.DEBUG)
+    logger.setLevel(logging.INFO)
     fmt = logging.Formatter('%(asctime)s %(levelname)s %(message)s')
     handler.setFormatter(fmt)
     logger.addHandler(handler)
@@ -53,8 +56,8 @@ class Sip2Sock(asyncore.dispatcher):
             self.write_buffer = self.write_buffer[sent:]
 
     def handle_close(self):
-        logger.info(' [-] %i -> %i (closed)' %
-                    (self.getsockname()[1], self.getpeername()[1]))
+        logger.debug(' [-] %i -> %i (closed)' %
+                     (self.getsockname()[1], self.getpeername()[1]))
         self.close()
 
 
@@ -68,7 +71,7 @@ class Sip2Server(Sip2Sock):
         logger.info("Try connect to %s:%s" % self.host)
         self.avaiable = False
         self.create_socket(socket.AF_INET, socket.SOCK_STREAM)
-        CallLater(2, self.check_status)
+        CallLater(5, self.check_status)
         self.connect(self.host)
 
     def __init__(self, host):
@@ -101,10 +104,14 @@ class Sip2Client(Sip2Sock):
         self.other = server
         server.other = self
         server.in_use = True
+        logger.debug("server %s in use by %s" % (server.host,
+                                                 self.getpeername()[1]))
 
     def handle_close(self):
         if self.other:
             self.other.in_use = False
+            logger.debug("server %s release by %s" % (self.other.host,
+                                                      self.getpeername()[1]))
             self.other = None
         Sip2Sock.handle_close(self)
 
@@ -121,7 +128,7 @@ class Sip2ProxyServer(asyncore.dispatcher):
         pair = self.accept()
         if pair is not None:
             sock, addr = pair
-            logger.info('Incoming connection from %s' % repr(addr))
+            logger.debug('Incoming connection from %s' % repr(addr))
             client_sock = Sip2Client(sock)
             server = get_avaible_server()
             if server:
