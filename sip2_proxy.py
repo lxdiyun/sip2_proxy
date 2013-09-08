@@ -172,8 +172,11 @@ def get_avaible_server():
         return None
 
 
-if __name__ == "__main__":
+def start_sip2_proxy_server():
     config_logger()
     setup_server_socks()
-    proxy_server = Sip2ProxyServer('0.0.0.0', PROXY_PORT)
+    Sip2ProxyServer('0.0.0.0', PROXY_PORT)
     loop()
+
+if __name__ == "__main__":
+    start_sip2_proxy_server()
