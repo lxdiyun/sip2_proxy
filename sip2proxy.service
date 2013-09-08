@@ -2,7 +2,7 @@
 Description=sip2 proxy server
 
 [Service]
-Type=Simple
+Type=simple
 ExecStart=/home/adli/sip2_proxy/sip2_proxy_service.py
 
 [Install]
