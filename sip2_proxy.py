@@ -3,13 +3,23 @@
 import logging
 import asyncore
 import socket
+from datetime import datetime
+from random import randrange
 import traceback
 from asyncore_delay import CallLater, loop
 
+# setting
 PROXY_PORT = 6001
+# recommend longer than 2
+SERVER_CONNECT_TIMEOUT = 5
 
-logger = None
+# log setting
+LOG_TO_FILE = True
+LOG_FILE_DIR = "/home/adli/sip2_proxy/log/"
+LOG_LEVEL = logging.DEBUG
 
+
+# server list
 sip2_server_list = [
     ("10.35.24.43", 6001),
     ("10.35.24.43", 6003),
@@ -19,6 +29,7 @@ sip2_server_list = [
 ]
 
 sip2_server_socks = list()
+logger = None
 
 
 def config_logger():
@@ -27,10 +38,15 @@ def config_logger():
     Set the log level and choose the destination for log output.
     """
     logger = logging.getLogger(__name__)
+    handler = None
 
-    handler = logging.StreamHandler()
+    if LOG_TO_FILE:
+        file_name = LOG_FILE_DIR + datetime.now().strftime('%Y-%m-%d') + ".log"
+        handler = logging.FileHandler(file_name)
+    else:
+        handler = logging.StreamHandler()
 
-    logger.setLevel(logging.INFO)
+    logger.setLevel(LOG_LEVEL)
     fmt = logging.Formatter('%(asctime)s %(levelname)s %(message)s')
     handler.setFormatter(fmt)
     logger.addHandler(handler)
@@ -56,7 +72,7 @@ class Sip2Sock(asyncore.dispatcher):
             self.write_buffer = self.write_buffer[sent:]
 
     def handle_close(self):
-        logger.debug(' [-] %i -> %i (closed)' %
+        logger.debug('Client [-] %i -> %i (closed)' %
                      (self.getsockname()[1], self.getpeername()[1]))
         self.close()
 
@@ -71,7 +87,7 @@ class Sip2Server(Sip2Sock):
         logger.info("Try connect to %s:%s" % self.host)
         self.avaiable = False
         self.create_socket(socket.AF_INET, socket.SOCK_STREAM)
-        CallLater(5, self.check_status)
+        CallLater(SERVER_CONNECT_TIMEOUT, self.check_status)
         self.connect(self.host)
 
     def __init__(self, host):
@@ -151,7 +167,7 @@ def get_avaible_server():
                               sip2_server_socks)
 
     if avaiable_servers:
-        return avaiable_servers[0]
+        return avaiable_servers[randrange(len(avaiable_servers))]
     else:
         return None
 
