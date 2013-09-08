@@ -2,6 +2,8 @@
 Description=sip2 proxy server
 
 [Service]
-Type=forking
-ExecStart=python2 /home/adli/sip2_proxy/sip2_proxy_service.py start
-ExecStop=python2 /home/adli/sip2_proxy/sip2_proxy_service.py stop
+Type=Simple
+ExecStart=/home/adli/sip2_proxy/sip2_proxy_service.py
+
+[Install]
+WantedBy=multi-user.target
