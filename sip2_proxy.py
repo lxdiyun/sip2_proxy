@@ -15,12 +15,13 @@ SERVER_CONNECT_TIMEOUT = 5
 
 # log setting
 LOG_TO_FILE = True
-LOG_FILE_DIR = "/home/adli/sip2_proxy/log/"
+LOG_FILE_DIR = "/home/sip2_proxy/log/"
 LOG_LEVEL = logging.INFO
 
 
 # server list
 sip2_server_list = [
+    ("192.168.64.52", 6001),
     ("10.35.24.43", 6003),
     ("10.35.24.43", 6005),
     ("10.35.24.43", 6007),
@@ -86,7 +87,7 @@ class Sip2Server(Sip2Sock):
         logger.info("Try connect to %s:%s" % self.host)
         self.avaiable = False
         self.create_socket(socket.AF_INET, socket.SOCK_STREAM)
-        CallLater(SERVER_CONNECT_TIMEOUT, self.check_status)
+#        CallLater(SERVER_CONNECT_TIMEOUT, self.check_status)
         self.connect(self.host)
 
     def __init__(self, host):

@@ -3,7 +3,7 @@ Description=sip2 proxy server
 
 [Service]
 Type=simple
-ExecStart=/home/adli/sip2_proxy/sip2_proxy_service.py
+ExecStart=/home/sip2_proxy/sip2_proxy_service.py
 
 [Install]
 WantedBy=multi-user.target
