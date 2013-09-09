@@ -16,12 +16,11 @@ SERVER_CONNECT_TIMEOUT = 5
 # log setting
 LOG_TO_FILE = True
 LOG_FILE_DIR = "/home/adli/sip2_proxy/log/"
-LOG_LEVEL = logging.DEBUG
+LOG_LEVEL = logging.INFO
 
 
 # server list
 sip2_server_list = [
-    ("10.35.24.43", 6001),
     ("10.35.24.43", 6003),
     ("10.35.24.43", 6005),
     ("10.35.24.43", 6007),
