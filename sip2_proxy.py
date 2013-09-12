@@ -141,45 +141,62 @@ class Sip2Client(Sip2Sock):
 class Sip2TestClient(Sip2Client):
     def __init__(self):
         Sip2Sock.__init__(self)
+        self.reset()
+
+    def reset(self):
         self.addr = "Test Client"
         self.test_sip = "1720130910    101122AO044120|AB5095888|AC|AY4AZF55C"
         self.result_re = re.compile("^18")
         self.test_result = False
-        self.tested = False
 
     def readable(self):
-        if self.other and self.connected and not self.tested:
-            return True
+            return False
 
-    def start_test(self):
-        if self.other:
-            logger.debug("Send test sip")
-            self.other.write_buffer += self.test_sip
-            self.tested = True
-        else:
-            logger.warning("no server avaiable")
-        CallLater(TEST_INTERVAL, self.check_result)
-
-    def check_result(self):
-        logger.debug("Check Receive test sip")
-        if self.result_re.match(self.write_buffer):
-            self.test_result = True
-
-        self.write_buffer = ""
-        self.test_end()
+    def writable(self):
+            return False
 
     def set_server(self, server):
         Sip2Client.set_server(self, server)
         self.server = server.host
         self.connected = True
 
-    def test_end(self):
-        Sip2Client.handle_close(self)
-        if self.test_result:
-            logger.info("Server %s test success" % self.host)
+    def start_test(self):
+        logger.debug("Sip2 server test start")
+        server = get_avaible_server()
+        if server:
+            self.set_server(server)
+            self.other.write_buffer += self.test_sip
+            CallLater(TEST_INTERVAL, self.check_result)
         else:
-            logger.warning("Server %s test Failed" % self.host)
+            self.test_end()
 
+    def check_result(self):
+        logger.debug("Sip2 server %s test check" % self.server)
+        if self.result_re.match(self.write_buffer):
+            self.test_result = True
+
+        self.write_buffer = ""
+        self.test_end()
+
+    def test_end(self):
+        if self.other:
+            if self.test_result:
+                logger.info("Server %s test success" % self.server)
+            else:
+                logger.warning("Server %s test failed" % self.server)
+        else:
+            logger.warning("No server avaiable")
+
+        logger.debug("Sip2 server test ended")
+        Sip2Client.handle_close(self)
+        self.server = None
+
+        CallLater(TEST_INTERVAL, Sip2TestClient.test_server)
+
+    def test_server():
+        test = Sip2TestClient()
+        test.start_test()
+        show_server_info()
 
 
 class Sip2ProxyServer(asyncore.dispatcher):
@@ -236,21 +253,12 @@ def show_server_info():
                  len(in_use_servers)))
 
 
-def test_server():
-    test = Sip2TestClient()
-    server = get_avaible_server()
-    if server:
-        test.set_server(server)
-    show_server_info()
-    CallLater(TEST_INTERVAL, test_server)
-
-
 def start_sip2_proxy_server():
     try:
         config_logger()
         setup_server_socks()
         Sip2ProxyServer('0.0.0.0', PROXY_PORT)
-#        CallLater(TEST_INTERVAL, test_server)
+        CallLater(TEST_INTERVAL, Sip2TestClient.test_server)
         loop()
     except Exception as e:
         logger.exception(e)
