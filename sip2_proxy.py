@@ -12,20 +12,25 @@ from asyncore_delay import CallLater, loop
 PROXY_PORT = 6001
 # recommend longer than 2
 SERVER_CONNECT_TIMEOUT = 5
+SERVER_CONNECT_RETRY_TIME = 5
 
 # log setting
-LOG_TO_FILE = True
+LOG_TO_FILE = False
 LOG_FILE_DIR = "/home/sip2_proxy/log/"
-LOG_LEVEL = logging.INFO
+LOG_LEVEL = logging.DEBUG
 
 
 # server list
 sip2_server_list = [
     ("192.168.64.52", 6001),
-    ("10.35.24.43", 6003),
-    ("10.35.24.43", 6005),
-    ("10.35.24.43", 6007),
-    ("10.35.24.43", 6009),
+#    ("192.168.64.52", 6005),
+    ("192.168.64.52", 6009),
+    ("192.168.64.52", 6011),
+    ("192.168.64.53", 6001),
+    ("192.168.64.53", 6003),
+    ("192.168.64.53", 6005),
+    ("192.168.64.53", 6007),
+    ("192.168.64.53", 6009),
 ]
 
 sip2_server_socks = list()
@@ -72,22 +77,13 @@ class Sip2Sock(asyncore.dispatcher):
             self.write_buffer = self.write_buffer[sent:]
 
     def handle_close(self):
-        logger.debug('Client [-] %i -> %i (closed)' %
-                     (self.getsockname()[1], self.getpeername()[1]))
         self.close()
 
 
 class Sip2Server(Sip2Sock):
-    def check_status(self):
-        if not self.avaiable:
-            logger.error("Server %s:%s connect timeout" % self.host)
-            self.handle_close()
-
     def setup_socket(self):
         logger.info("Try connect to %s:%s" % self.host)
-        self.avaiable = False
         self.create_socket(socket.AF_INET, socket.SOCK_STREAM)
-#        CallLater(SERVER_CONNECT_TIMEOUT, self.check_status)
         self.connect(self.host)
 
     def __init__(self, host):
@@ -98,38 +94,45 @@ class Sip2Server(Sip2Sock):
     def handle_close(self):
         self.close()
         if self.other:
+            logger.warning("Server %s force release %s" % (self.host,
+                                                           self.other.addr))
             self.other.close()
             self.other = None
-        self.avaiable = False
-        self.check_event = CallLater(1, self.setup_socket)
+        self.check_event = CallLater(SERVER_CONNECT_RETRY_TIME,
+                                     self.setup_socket)
         logger.warning("Server %s:%s close" % self.host)
+        show_server_info()
 
     def handle_connect(self):
-        self.avaiable = True
         self.in_use = False
         logger.info("Server %s:%s connected" % self.host)
 
     def handle_error(self):
         nil, t, v, tbinfo = asyncore.compact_traceback()
-        logger.error("Server %s (%s:%s" % (self.host, t, v))
+        logger.warning("Server %s (%s:%s" % (self.host, t, v))
         self.handle_close()
 
 
 class Sip2Client(Sip2Sock):
+    def __init__(self, sock, addr):
+        Sip2Sock.__init__(self, sock)
+        self.addr = addr
+
     def set_server(self, server):
         self.other = server
         server.other = self
         server.in_use = True
         logger.debug("server %s in use by %s" % (server.host,
-                                                 self.getpeername()[1]))
+                                                 self.addr))
 
     def handle_close(self):
         if self.other:
             self.other.in_use = False
-            logger.debug("server %s release by %s" % (self.other.host,
-                                                      self.getpeername()[1]))
+            logger.debug("server %s released by %s" % (self.other.host,
+                                                       self.addr))
             self.other = None
         Sip2Sock.handle_close(self)
+        show_server_info()
 
 
 class Sip2ProxyServer(asyncore.dispatcher):
@@ -145,12 +148,14 @@ class Sip2ProxyServer(asyncore.dispatcher):
         if pair is not None:
             sock, addr = pair
             logger.debug('Incoming connection from %s' % repr(addr))
-            client_sock = Sip2Client(sock)
+            client_sock = Sip2Client(sock, addr)
             server = get_avaible_server()
             if server:
                 client_sock.set_server(server)
             else:
                 client_sock.close()
+
+        show_server_info()
 
 
 def setup_server_socks():
@@ -162,7 +167,7 @@ def setup_server_socks():
 
 
 def get_avaible_server():
-    avaiable_servers = filter(lambda server: (server.avaiable and not
+    avaiable_servers = filter(lambda server: (server.connected and not
                                               server.in_use),
                               sip2_server_socks)
 
@@ -172,11 +177,24 @@ def get_avaible_server():
         return None
 
 
+def show_server_info():
+    connected_server = filter(lambda server: server.connect, sip2_server_socks)
+    in_use_servers = filter(lambda server: server.in_use, connected_server)
+
+    logger.info("Server Info Total: %d connected: %d used:%d" %
+                (len(sip2_server_socks),
+                 len(connected_server),
+                 len(in_use_servers)))
+
+
 def start_sip2_proxy_server():
-    config_logger()
-    setup_server_socks()
-    Sip2ProxyServer('0.0.0.0', PROXY_PORT)
-    loop()
+    try:
+        config_logger()
+        setup_server_socks()
+        Sip2ProxyServer('0.0.0.0', PROXY_PORT)
+        loop()
+    except Exception as e:
+        logger.error(e)
 
 if __name__ == "__main__":
     start_sip2_proxy_server()
