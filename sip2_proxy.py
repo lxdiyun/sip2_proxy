@@ -15,12 +15,12 @@ PROXY_PORT = 6001
 SERVER_CONNECT_TIMEOUT = 5
 SERVER_CONNECT_RETRY_TIME = 5
 
-TEST_INTERVAL = 2
+TEST_INTERVAL = 5
 
 # log setting
 LOG_TO_FILE = False
 LOG_FILE_DIR = "/home/sip2_proxy/log/"
-LOG_LEVEL = logging.DEBUG
+LOG_LEVEL = logging.INFO
 
 # server list
 sip2_server_list = [
@@ -70,11 +70,15 @@ class Sip2Sock(asyncore.dispatcher):
             return False
 
     def handle_read(self):
+        recv_sip = self.recv(4096*4)
+        logger.debug("%s read %s" % (self, recv_sip))
         if self.other:
-            self.other.write_buffer += self.recv(4096*4)
+            if self.other:
+                self.other.write_buffer += recv_sip
 
     def handle_write(self):
-        if self.other:
+        if self.other and self.write_buffer:
+            logger.debug("%s write %s" % (self, self.write_buffer))
             sent = self.send(self.write_buffer)
             self.write_buffer = self.write_buffer[sent:]
 
@@ -83,10 +87,19 @@ class Sip2Sock(asyncore.dispatcher):
 
 
 class Sip2Server(Sip2Sock):
+    test_sip = "1720130913    095122AO044120|AB5095888|AC|AY4AZF55C\r"
+    test_re = re.compile("^18")
+
     def setup_socket(self):
         logger.info("Try connect to %s:%s" % self.host)
         self.create_socket(socket.AF_INET, socket.SOCK_STREAM)
         self.connect(self.host)
+        self.reset()
+
+    def reset(self):
+        self.testing = False
+        self.in_use = False
+        self.test_result = False
 
     def __init__(self, host):
         asyncore.dispatcher.__init__(self)
@@ -94,6 +107,9 @@ class Sip2Server(Sip2Sock):
         self.setup_socket()
 
     def handle_close(self):
+        if self.testing:
+            self.end_test()
+
         if self.other:
             logger.warning("Server %s force release %s" % (self.host,
                                                            self.other.addr))
@@ -102,7 +118,7 @@ class Sip2Server(Sip2Sock):
 
         self.close()
         logger.warning("Server %s:%s close" % self.host)
-        show_server_info()
+        show_servers_info()
         CallLater(SERVER_CONNECT_RETRY_TIME, self.setup_socket)
 
     def handle_connect(self):
@@ -111,8 +127,57 @@ class Sip2Server(Sip2Sock):
 
     def handle_error(self):
         nil, t, v, tbinfo = asyncore.compact_traceback()
-        logger.warning("Server %s (%s:%s" % (self.host, t, v))
+        logger.warning("Server %s (%s:%s)\n(%s)" % (self.host, t, v, tbinfo))
         self.handle_close()
+
+    def start_test(self):
+        logger.debug("Server %s:%s test start" % self.host)
+        if self.connected and not self.in_use:
+            self.testing = True
+            self.in_use = True
+            self.test_result = False
+            self.write_buffer += self.test_sip
+        else:
+            logger.warning("Server %s:%s in use or disconnect, stop testing"
+                           % self.host)
+
+        show_servers_info()
+
+    def end_test(self):
+        if self.test_result:
+            logger.info("Server %s:%s test passed" % self.host)
+        else:
+            logger.warning("Server %s:%s test failed" % self.host)
+
+        logger.debug("Server %s:%s test end" % self.host)
+        self.testing = False
+        self.in_use = False
+
+        show_servers_info()
+
+    def handle_write(self):
+        if self.testing and self.write_buffer:
+            logger.debug("%s send test sip: %s" % (self, self.write_buffer))
+            sent = self.send(self.write_buffer)
+            self.write_buffer = self.write_buffer[sent:]
+        else:
+            Sip2Sock.handle_write(self)
+
+    def handle_read(self):
+        if self.testing:
+            recv_sip = self.recv(4096*4)
+            logger.debug("%s receive test sip: %s" % (self, recv_sip))
+            if self.test_re.match(recv_sip):
+                self.test_result = True
+            self.end_test()
+        else:
+            Sip2Sock.handle_read(self)
+
+    def readable(self):
+        if self.testing:
+            return True
+        else:
+            return Sip2Sock.readable(self)
 
 
 class Sip2Client(Sip2Sock):
@@ -135,68 +200,7 @@ class Sip2Client(Sip2Sock):
             self.other = None
 
         Sip2Sock.handle_close(self)
-        show_server_info()
-
-
-class Sip2TestClient(Sip2Client):
-    def __init__(self):
-        Sip2Sock.__init__(self)
-        self.reset()
-
-    def reset(self):
-        self.addr = "Test Client"
-        self.test_sip = "1720130910    101122AO044120|AB5095888|AC|AY4AZF55C"
-        self.result_re = re.compile("^18")
-        self.test_result = False
-
-    def readable(self):
-            return False
-
-    def writable(self):
-            return False
-
-    def set_server(self, server):
-        Sip2Client.set_server(self, server)
-        self.server = server.host
-        self.connected = True
-
-    def start_test(self):
-        logger.debug("Sip2 server test start")
-        server = get_avaible_server()
-        if server:
-            self.set_server(server)
-            self.other.write_buffer += self.test_sip
-            CallLater(TEST_INTERVAL, self.check_result)
-        else:
-            self.test_end()
-
-    def check_result(self):
-        logger.debug("Sip2 server %s test check" % self.server)
-        if self.result_re.match(self.write_buffer):
-            self.test_result = True
-
-        self.write_buffer = ""
-        self.test_end()
-
-    def test_end(self):
-        if self.other:
-            if self.test_result:
-                logger.info("Server %s test success" % self.server)
-            else:
-                logger.warning("Server %s test failed" % self.server)
-        else:
-            logger.warning("No server avaiable")
-
-        logger.debug("Sip2 server test ended")
-        Sip2Client.handle_close(self)
-        self.server = None
-
-        CallLater(TEST_INTERVAL, Sip2TestClient.test_server)
-
-    def test_server():
-        test = Sip2TestClient()
-        test.start_test()
-        show_server_info()
+        show_servers_info()
 
 
 class Sip2ProxyServer(asyncore.dispatcher):
@@ -220,7 +224,7 @@ class Sip2ProxyServer(asyncore.dispatcher):
             else:
                 client_sock.handle_close()
 
-        show_server_info()
+        show_servers_info()
 
 
 def setup_server_socks():
@@ -242,7 +246,7 @@ def get_avaible_server():
         return None
 
 
-def show_server_info():
+def show_servers_info():
     connected_server = filter(lambda server: server.connected,
                               sip2_server_socks)
     in_use_servers = filter(lambda server: server.in_use, connected_server)
@@ -253,12 +257,22 @@ def show_server_info():
                  len(in_use_servers)))
 
 
+def test_server():
+    server = get_avaible_server()
+    if server:
+        server.start_test()
+    else:
+        logger.warning("No avaiable servers")
+
+    CallLater(TEST_INTERVAL, test_server)
+
+
 def start_sip2_proxy_server():
     try:
         config_logger()
         setup_server_socks()
         Sip2ProxyServer('0.0.0.0', PROXY_PORT)
-        CallLater(TEST_INTERVAL, Sip2TestClient.test_server)
+        CallLater(TEST_INTERVAL, test_server)
         loop()
     except Exception as e:
         logger.exception(e)
