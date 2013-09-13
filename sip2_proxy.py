@@ -18,7 +18,7 @@ SERVER_CONNECT_RETRY_TIME = 5
 TEST_INTERVAL = 5
 
 # log setting
-LOG_TO_FILE = False
+LOG_TO_FILE = True
 LOG_FILE_DIR = "/home/sip2_proxy/log/"
 LOG_LEVEL = logging.INFO
 
