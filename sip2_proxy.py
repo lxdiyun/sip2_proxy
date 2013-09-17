@@ -1,6 +1,7 @@
 #!/usr/bin/env python2
 
 import logging
+from logging.handlers import SMTPHandler
 import asyncore
 import socket
 from datetime import datetime
@@ -54,9 +55,19 @@ def config_logger():
         handler = logging.StreamHandler()
 
     logger.setLevel(LOG_LEVEL)
+    handler.setLevel(LOG_LEVEL)
     fmt = logging.Formatter('%(asctime)s %(levelname)s %(message)s')
     handler.setFormatter(fmt)
     logger.addHandler(handler)
+    mail_handeler = SMTPHandler(mailhost='smtp.stu.edu.cn',
+                                fromaddr='xdli@stu.edu.cn',
+                                toaddrs=['xdli@stu.edu.cn'],
+                                subject='The Sip2 Proxy Error log',
+                                credentials=('xdli', 'ad4.stu'),
+                                secure=None)
+    mail_handeler.setLevel(logging.ERROR)
+    mail_handeler.setFormatter(fmt)
+    logger.addHandler(mail_handeler)
 
 
 class Sip2Sock(asyncore.dispatcher):
@@ -262,7 +273,7 @@ def test_server():
     if server:
         server.start_test()
     else:
-        logger.warning("No avaiable servers")
+        logger.error("No avaiable servers")
 
     CallLater(TEST_INTERVAL, test_server)
 
