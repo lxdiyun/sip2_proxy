@@ -1,7 +1,7 @@
 #!/usr/bin/env python2
 
 import logging
-from logging.handlers import SMTPHandler
+from BufferingSMTPHandler import BufferingSMTPHandler
 import asyncore
 import socket
 from datetime import datetime
@@ -59,12 +59,13 @@ def config_logger():
     fmt = logging.Formatter('%(asctime)s %(levelname)s %(message)s')
     handler.setFormatter(fmt)
     logger.addHandler(handler)
-    mail_handeler = SMTPHandler(mailhost='smtp.stu.edu.cn',
-                                fromaddr='xdli@stu.edu.cn',
-                                toaddrs=['xdli@stu.edu.cn'],
-                                subject='The Sip2 Proxy Error log',
-                                credentials=('xdli', 'ad4.stu'),
-                                secure=None)
+    mail_handeler = BufferingSMTPHandler(mailhost='smtp.stu.edu.cn',
+                                         fromaddr='xdli@stu.edu.cn',
+                                         toaddrs=['xdli@stu.edu.cn',
+                                                  "lxdiyun@gmail.com"],
+                                         subject='The Sip2 Proxy Error log',
+                                         credentials=('xdli', 'ad4.stu'),
+                                         secure=None)
     mail_handeler.setLevel(logging.ERROR)
     mail_handeler.setFormatter(fmt)
     logger.addHandler(mail_handeler)
@@ -261,11 +262,15 @@ def show_servers_info():
     connected_server = filter(lambda server: server.connected,
                               sip2_server_socks)
     in_use_servers = filter(lambda server: server.in_use, connected_server)
+    total = len(sip2_server_socks)
+    avaiable = len(connected_server)
 
     logger.info("Server Info Total: %d connected: %d used:%d" %
-                (len(sip2_server_socks),
-                 len(connected_server),
+                (total,
+                 avaiable,
                  len(in_use_servers)))
+    if avaiable <= (total / 2):
+        logger.error("[%d / %d] server not avaiable" % (total - avaiable, total))
 
 
 def test_server():
