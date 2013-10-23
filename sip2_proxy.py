@@ -21,7 +21,7 @@ TEST_INTERVAL = 5
 # log setting
 LOG_TO_FILE = True
 LOG_FILE_DIR = "/home/sip2_proxy/log/"
-LOG_LEVEL = logging.INFO
+LOG_LEVEL = logging.WARNING
 
 # server list
 sip2_server_list = [
@@ -65,7 +65,8 @@ def config_logger():
                                                   "lxdiyun@gmail.com"],
                                          subject='The Sip2 Proxy Error log',
                                          credentials=('xdli', 'ad4.stu'),
-                                         secure=None)
+                                         secure=None,
+                                         capacity=128)
     mail_handeler.setLevel(logging.ERROR)
     mail_handeler.setFormatter(fmt)
     logger.addHandler(mail_handeler)
