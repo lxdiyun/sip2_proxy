@@ -66,7 +66,7 @@ def config_logger():
                                          subject='The Sip2 Proxy Error log',
                                          credentials=('xdli', 'ad4.stu'),
                                          secure=None,
-                                         capacity=128)
+                                         capacity=64)
     mail_handeler.setLevel(logging.ERROR)
     mail_handeler.setFormatter(fmt)
     logger.addHandler(mail_handeler)
