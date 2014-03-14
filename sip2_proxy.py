@@ -19,20 +19,12 @@ SERVER_CONNECT_RETRY_TIME = 5
 TEST_INTERVAL = 5
 
 # log setting
-LOG_TO_FILE = True
+LOG_TO_FILE = False
 LOG_FILE_DIR = "/home/sip2_proxy/log/"
-LOG_LEVEL = logging.WARNING
+LOG_LEVEL = logging.DEBUG
 
 # server list
 sip2_server_list = [
-    ("192.168.64.52", 6001),
-    ("192.168.64.52", 6005),
-    ("192.168.64.52", 6009),
-    ("192.168.64.52", 6011),
-    ("192.168.64.53", 6001),
-    ("192.168.64.53", 6003),
-    ("192.168.64.53", 6005),
-    ("192.168.64.53", 6007),
     ("192.168.64.53", 6009),
 ]
 
@@ -78,16 +70,22 @@ class Sip2Sock(asyncore.dispatcher):
 
     def readable(self):
         if self.other and self.connected:
-            return not self.other.write_buffer
+            return True
         else:
             return False
 
     def handle_read(self):
         recv_sip = self.recv(4096*4)
         logger.debug("%s read %s" % (self, recv_sip))
+
         if self.other:
-            if self.other:
-                self.other.write_buffer += recv_sip
+            self.other.write_buffer += recv_sip
+
+    def writable(self):
+        if self.connected:
+            return 0 < len(self.write_buffer)
+        else:
+            return True
 
     def handle_write(self):
         if self.other and self.write_buffer:
@@ -192,6 +190,12 @@ class Sip2Server(Sip2Sock):
         else:
             return Sip2Sock.readable(self)
 
+    def writable(self):
+        if self.testing:
+            return True
+        else:
+            return Sip2Sock.writable(self)
+
 
 class Sip2Client(Sip2Sock):
     def __init__(self, sock, addr):
@@ -290,7 +294,7 @@ def start_sip2_proxy_server():
         setup_server_socks()
         Sip2ProxyServer('0.0.0.0', PROXY_PORT)
         CallLater(TEST_INTERVAL, test_server)
-        loop()
+        loop(timeout=0.1, use_poll=True)
     except Exception as e:
         logger.exception(e)
 

@@ -188,6 +188,7 @@ def loop(timeout=0.001, use_poll=False, map=None, count=None):
         poll_fun = asyncore.poll
     if map is None:
         map = asyncore.socket_map
+    
     if count is None:
         while (map or _tasks):
             poll_fun(timeout, map)
