@@ -19,13 +19,21 @@ SERVER_CONNECT_RETRY_TIME = 5
 TEST_INTERVAL = 5
 
 # log setting
-LOG_TO_FILE = False
+LOG_TO_FILE = True
 LOG_FILE_DIR = "/home/sip2_proxy/log/"
-LOG_LEVEL = logging.DEBUG
+LOG_LEVEL = logging.WARNING
 
 # server list
 sip2_server_list = [
-    ("192.168.64.53", 6009),
+    ("192.168.64.52", 6001),
+    ("192.168.64.52", 6005),
+    ("192.168.64.52", 6009),
+    ("192.168.64.52", 6011),
+    ("192.168.64.53", 6001),
+    ("192.168.64.53", 6003),
+    ("192.168.64.53", 6005),
+    ("192.168.64.53", 6007),
+#    ("192.168.64.53", 6009),
 ]
 
 sip2_server_socks = list()
@@ -54,7 +62,7 @@ def config_logger():
     mail_handeler = BufferingSMTPHandler(mailhost='smtp.stu.edu.cn',
                                          fromaddr='xdli@stu.edu.cn',
                                          toaddrs=['xdli@stu.edu.cn',
-                                                  "lxdiyun@gmail.com"],
+                                                  'qzma@stu.edu.cn'],
                                          subject='The Sip2 Proxy Error log',
                                          credentials=('xdli', 'ad4.stu'),
                                          secure=None,
