@@ -21,7 +21,7 @@ TEST_INTERVAL = 5
 # log setting
 LOG_TO_FILE = True
 LOG_FILE_DIR = "/home/sip2_proxy/log/"
-LOG_LEVEL = logging.WARNING
+LOG_LEVEL = logging.INFO
 
 # server list
 sip2_server_list = [
@@ -75,12 +75,6 @@ def config_logger():
 class Sip2Sock(asyncore.dispatcher):
     write_buffer = ''
     other = None
-
-    def readable(self):
-        if self.other and self.connected:
-            return True
-        else:
-            return False
 
     def handle_read(self):
         recv_sip = self.recv(4096*4)
@@ -192,12 +186,6 @@ class Sip2Server(Sip2Sock):
         else:
             Sip2Sock.handle_read(self)
 
-    def readable(self):
-        if self.testing:
-            return True
-        else:
-            return Sip2Sock.readable(self)
-
     def writable(self):
         if self.testing:
             return True
@@ -247,6 +235,7 @@ class Sip2ProxyServer(asyncore.dispatcher):
             if server:
                 client_sock.set_server(server)
             else:
+                logger.error("No avaiable servers")
                 client_sock.handle_close()
 
         show_servers_info()
