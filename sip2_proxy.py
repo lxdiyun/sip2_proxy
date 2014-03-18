@@ -19,9 +19,9 @@ SERVER_CONNECT_RETRY_TIME = 5
 TEST_INTERVAL = 5
 
 # log setting
-LOG_TO_FILE = True
+LOG_TO_FILE = False
 LOG_FILE_DIR = "/home/sip2_proxy/log/"
-LOG_LEVEL = logging.INFO
+LOG_LEVEL = logging.DEBUG
 
 # server list
 sip2_server_list = [
@@ -61,8 +61,7 @@ def config_logger():
     logger.addHandler(handler)
     mail_handeler = BufferingSMTPHandler(mailhost='smtp.stu.edu.cn',
                                          fromaddr='xdli@stu.edu.cn',
-                                         toaddrs=['xdli@stu.edu.cn',
-                                                  'qzma@stu.edu.cn'],
+                                         toaddrs=['xdli@stu.edu.cn'],
                                          subject='The Sip2 Proxy Error log',
                                          credentials=('xdli', 'ad4.stu'),
                                          secure=None,
@@ -77,11 +76,12 @@ class Sip2Sock(asyncore.dispatcher):
     other = None
 
     def handle_read(self):
-        recv_sip = self.recv(4096*4)
-        logger.debug("%s read %s" % (self, recv_sip))
+        if self.connected:
+            recv_sip = self.recv(4096*4)
+            logger.debug("%s read %s" % (self, recv_sip))
 
-        if self.other:
-            self.other.write_buffer += recv_sip
+            if self.other:
+                self.other.write_buffer += recv_sip
 
     def writable(self):
         if self.connected:
@@ -90,7 +90,7 @@ class Sip2Sock(asyncore.dispatcher):
             return True
 
     def handle_write(self):
-        if self.other and self.write_buffer:
+        if self.connected and self.other and self.write_buffer:
             logger.debug("%s write %s" % (self, self.write_buffer))
             sent = self.send(self.write_buffer)
             self.write_buffer = self.write_buffer[sent:]
@@ -102,12 +102,19 @@ class Sip2Sock(asyncore.dispatcher):
 class Sip2Server(Sip2Sock):
     test_sip = "1720130913    095122AO044120|AB5095888|AC|AY4AZF55C\r"
     test_re = re.compile("^18")
+    timeout = SERVER_CONNECT_TIMEOUT
 
     def setup_socket(self):
-        logger.info("Try connect to %s:%s" % self.host)
-        self.create_socket(socket.AF_INET, socket.SOCK_STREAM)
-        self.connect(self.host)
-        self.reset()
+        if (not self.connecting) and not self.connected:
+            logger.info("Try connect to %s:%s" % self.host)
+            self.reset()
+            self.create_socket(socket.AF_INET, socket.SOCK_STREAM)
+            self.connect(self.host)
+            self.callback = CallLater(self.timeout, self.handle_timeout)
+        else:
+            logger.error("Call setup socket error")
+            for line in traceback.format_stack():
+                logger.error(line.strip())
 
     def reset(self):
         self.testing = False
@@ -115,11 +122,22 @@ class Sip2Server(Sip2Sock):
         self.test_result = False
 
     def __init__(self, host):
-        asyncore.dispatcher.__init__(self)
+        Sip2Sock.__init__(self)
         self.host = host
         self.setup_socket()
 
+    def handle_timeout(self):
+        logger.warning("Connect server %s timout after %d seconds" %
+                       (self.host, self.timeout))
+        self.handle_close()
+
     def handle_close(self):
+        logger.warning("Server %s close, retry %d seconds later." %
+                       (self.host, SERVER_CONNECT_RETRY_TIME))
+        CallLater(SERVER_CONNECT_RETRY_TIME, self.setup_socket)
+
+        Sip2Sock.handle_close(self)
+
         if self.testing:
             self.end_test()
 
@@ -129,18 +147,17 @@ class Sip2Server(Sip2Sock):
             self.other.handle_close()
             self.other = None
 
-        self.close()
-        logger.warning("Server %s:%s close" % self.host)
         show_servers_info()
-        CallLater(SERVER_CONNECT_RETRY_TIME, self.setup_socket)
 
     def handle_connect(self):
         self.in_use = False
         logger.info("Server %s:%s connected" % self.host)
+        self.callback.reset()
 
     def handle_error(self):
         nil, t, v, tbinfo = asyncore.compact_traceback()
-        logger.warning("Server %s (%s:%s)\n(%s)" % (self.host, t, v, tbinfo))
+        logger.warning("Server error: %s (%s:%s)\n(%s)" %
+                       (self.host, t, v, tbinfo))
         self.handle_close()
 
     def start_test(self):

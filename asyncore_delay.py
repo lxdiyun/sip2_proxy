@@ -1,4 +1,12 @@
-#!/usr/bin/env python2
+#!/usr/bin/env python
+
+"""
+A heapq-based scheduler for asyncore.
+
+Author: Giampaolo Rodola' <g.rodola [AT] gmail [DOT] com>
+License: MIT
+"""
+
 import sys
 import time
 import heapq
@@ -141,8 +149,7 @@ def _scheduler():
         except (KeyboardInterrupt, SystemExit, asyncore.ExitNow):
             raise
         except:
-            print(traceback.format_exc())
-
+            print traceback.format_exc()
 
 def close_all(map=None, ignore_all=False):
     """Close all scheduled functions and opened sockets."""
@@ -151,7 +158,7 @@ def close_all(map=None, ignore_all=False):
     for x in map.values():
         try:
             x.close()
-        except OSError as x:
+        except OSError, x:
             if x[0] == errno.EBADF:
                 pass
             elif not ignore_all:
@@ -188,7 +195,6 @@ def loop(timeout=0.001, use_poll=False, map=None, count=None):
         poll_fun = asyncore.poll
     if map is None:
         map = asyncore.socket_map
-    
     if count is None:
         while (map or _tasks):
             poll_fun(timeout, map)
@@ -198,3 +204,98 @@ def loop(timeout=0.001, use_poll=False, map=None, count=None):
             poll_fun(timeout, map)
             _scheduler()
             count -= 1
+
+
+if __name__ == '__main__':
+
+    # ==============================================================
+    # schedule a function
+    # ==============================================================
+
+    def foo():
+        print "I'm called after 2.5 seconds"
+
+    CallLater(2.5, foo)
+    #loop()
+
+
+    # ==============================================================
+    # call a function every second
+    # ==============================================================
+
+    def bar():
+        print "I'm called every second"
+
+    CallEvery(1, bar)
+    #loop()
+
+    # ==============================================================
+    # scheduled functions can be resetted, delayed or cancelled
+    # ==============================================================
+
+    fun = CallLater(1, foo)
+    fun.reset()
+    fun.delay(1.5)
+    fun.cancel()
+
+    # ==============================================================
+    # example of a basic asyncore client shutting down if
+    # server does not reply for more than 3 seconds
+    # ==============================================================
+
+    import socket
+
+    class UselessClient(asyncore.dispatcher):
+
+        timeout = 3
+
+        def __init__(self, address):
+            asyncore.dispatcher.__init__(self)
+            self.create_socket(socket.AF_INET, socket.SOCK_STREAM)
+            self.connect(address)
+            self.callback = CallLater(self.timeout, self.handle_timeout)
+
+        def handle_timeout(self):
+            print "no response from server; disconnecting"
+            self.close()
+
+        def handle_connect(self):
+            print "connected"
+
+        def writable(self):
+            return not self.connected
+
+        def handle_read(self):
+            # reset timeout on data received
+            self.callback.reset()
+            data = self.recv(8192)
+            self.in_buffer.append(data)
+
+        def handle_close(self):
+            if self.in_buffer:
+                print "".join(self.in_buffer)
+            self.close()
+
+        def handle_error(self):
+            raise
+
+        def close(self):
+            if not self.callback.cancelled:
+                self.callback.cancel()
+            asyncore.dispatcher.close(self)
+
+    UselessClient(('google.com', 80))
+
+    # ==============================================================
+    # close this demo after 5 seconds
+    # ==============================================================
+
+    CallLater(5, close_all)
+    #loop()
+
+
+    # ==============================================================
+    # finally, start the loop to take care of all the functions
+    # (and connections) scheduled so far
+    # ==============================================================
+    loop()
