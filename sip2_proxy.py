@@ -19,9 +19,9 @@ SERVER_CONNECT_RETRY_TIME = 5
 TEST_INTERVAL = 5
 
 # log setting
-LOG_TO_FILE = False
+LOG_TO_FILE = True
 LOG_FILE_DIR = "/home/sip2_proxy/log/"
-LOG_LEVEL = logging.DEBUG
+LOG_LEVEL = logging.INFO
 
 # server list
 sip2_server_list = [
@@ -71,6 +71,11 @@ def config_logger():
     logger.addHandler(mail_handeler)
 
 
+def log_call_back(log_fun):
+    for line in traceback.format_stack():
+        log_fun(line.strip())
+
+
 class Sip2Sock(asyncore.dispatcher):
     write_buffer = ''
     other = None
@@ -102,7 +107,7 @@ class Sip2Sock(asyncore.dispatcher):
 class Sip2Server(Sip2Sock):
     test_sip = "1720130913    095122AO044120|AB5095888|AC|AY4AZF55C\r"
     test_re = re.compile("^18")
-    timeout = SERVER_CONNECT_TIMEOUT
+    SERVER_CONNECT_TIMEOUT
 
     def setup_socket(self):
         if (not self.connecting) and not self.connected:
@@ -110,11 +115,11 @@ class Sip2Server(Sip2Sock):
             self.reset()
             self.create_socket(socket.AF_INET, socket.SOCK_STREAM)
             self.connect(self.host)
-            self.callback = CallLater(self.timeout, self.handle_timeout)
+            self.callback = CallLater(SERVER_CONNECT_TIMEOUT,
+                                      self.handle_connect_timeout)
         else:
             logger.error("Call setup socket error")
-            for line in traceback.format_stack():
-                logger.error(line.strip())
+            log_call_back(logger.error)
 
     def reset(self):
         self.testing = False
@@ -126,38 +131,47 @@ class Sip2Server(Sip2Sock):
         self.host = host
         self.setup_socket()
 
-    def handle_timeout(self):
-        logger.warning("Connect server %s timout after %d seconds" %
-                       (self.host, self.timeout))
+    def handle_connect_timeout(self):
+        logger.warning("Connect server %s timout after %d seconds"
+                       % (self.host, SERVER_CONNECT_TIMEOUT))
         self.handle_close()
 
     def handle_close(self):
-        logger.warning("Server %s close, retry %d seconds later." %
-                       (self.host, SERVER_CONNECT_RETRY_TIME))
-        CallLater(SERVER_CONNECT_RETRY_TIME, self.setup_socket)
+        if self.connecting or self.connected:
+            if self.callback:
+                if not self.callback.cancelled:
+                    self.callback.cancel()
 
-        Sip2Sock.handle_close(self)
+            logger.warning("Server %s close, retry %d seconds later."
+                           % (self.host, SERVER_CONNECT_RETRY_TIME))
+            self.callback = CallLater(SERVER_CONNECT_RETRY_TIME,
+                                      self.setup_socket)
 
-        if self.testing:
-            self.end_test()
+            Sip2Sock.handle_close(self)
 
-        if self.other:
-            logger.warning("Server %s force release %s" % (self.host,
-                                                           self.other.addr))
-            self.other.handle_close()
-            self.other = None
+            if self.testing:
+                self.end_test()
+
+            if self.other:
+                logger.warning("Server %s force release %s"
+                               % (self.host, self.other.addr))
+                self.other.handle_close()
+                self.other = None
+        else:
+            logger.warning("Server %s already closed" % self.host)
+            log_call_back(logger.error)
 
         show_servers_info()
 
     def handle_connect(self):
         self.in_use = False
         logger.info("Server %s:%s connected" % self.host)
-        self.callback.reset()
+        self.callback.cancel()
 
     def handle_error(self):
         nil, t, v, tbinfo = asyncore.compact_traceback()
-        logger.warning("Server error: %s (%s:%s)\n(%s)" %
-                       (self.host, t, v, tbinfo))
+        logger.warning("Server error: %s (%s:%s)\n(%s)"
+                       % (self.host, t, v, tbinfo))
         self.handle_close()
 
     def start_test(self):
@@ -284,12 +298,11 @@ def show_servers_info():
     total = len(sip2_server_socks)
     avaiable = len(connected_server)
 
-    logger.info("Server Info Total: %d connected: %d used:%d" %
-                (total,
-                 avaiable,
-                 len(in_use_servers)))
+    logger.info("Server Info Total: %d connected: %d used:%d"
+                % (total, avaiable, len(in_use_servers)))
     if avaiable <= (total / 2):
-        logger.error("[%d / %d] server not avaiable" % (total - avaiable, total))
+        logger.error("[%d / %d] server not avaiable"
+                     % (total - avaiable, total))
 
 
 def test_server():
