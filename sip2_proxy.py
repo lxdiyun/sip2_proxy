@@ -159,7 +159,7 @@ class Sip2Server(Sip2Sock):
                 self.other = None
         else:
             logger.warning("Server %s already closed" % self.host)
-            log_call_back(logger.error)
+            log_call_back(logger.warning)
 
         show_servers_info()
 
@@ -233,14 +233,14 @@ class Sip2Client(Sip2Sock):
         self.other = server
         server.other = self
         server.in_use = True
-        logger.debug("server %s in use by %s" % (server.host,
-                                                 self.addr))
+        logger.info("server %s in use by %s"
+                    % (server.host, self.addr))
 
     def handle_close(self):
         if self.other:
             self.other.in_use = False
-            logger.debug("server %s released by %s" % (self.other.host,
-                                                       self.addr))
+            logger.info("server %s released by %s"
+                        % (self.other.host, self.addr))
             self.other = None
 
         Sip2Sock.handle_close(self)
