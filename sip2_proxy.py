@@ -158,7 +158,7 @@ class Sip2Server(Sip2Sock):
                 self.other.handle_close()
                 self.other = None
         else:
-            logger.warning("Server %s already closed" % self.host)
+            logger.warning("Server %s:%s already closed" % self.host)
             log_call_back(logger.warning)
 
         show_servers_info()
