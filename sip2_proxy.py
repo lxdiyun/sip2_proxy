@@ -144,6 +144,7 @@ class Sip2Server(Sip2Sock):
 
             logger.warning("Server %s close, retry %d seconds later."
                            % (self.host, SERVER_CONNECT_RETRY_TIME))
+            log_call_back(logger.info)
             self.callback = CallLater(SERVER_CONNECT_RETRY_TIME,
                                       self.setup_socket)
 
