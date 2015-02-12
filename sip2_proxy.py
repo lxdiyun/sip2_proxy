@@ -28,12 +28,13 @@ sip2_server_list = [
     ("192.168.64.52", 6001),
     ("192.168.64.52", 6005),
     ("192.168.64.52", 6009),
+    ("192.168.64.52", 6007),
     ("192.168.64.52", 6011),
     ("192.168.64.53", 6001),
-    ("192.168.64.53", 6003),
     ("192.168.64.53", 6005),
     ("192.168.64.53", 6007),
     ("192.168.64.53", 6009),
+    ("192.168.64.53", 6011),
 ]
 
 sip2_server_socks = list()
@@ -65,7 +66,7 @@ def config_logger():
                                          subject='The Sip2 Proxy Error log',
                                          credentials=('xdli', 'ad4.stu'),
                                          secure=None,
-                                         capacity=64)
+                                         capacity=1024)
     mail_handeler.setLevel(logging.ERROR)
     mail_handeler.setFormatter(fmt)
     logger.addHandler(mail_handeler)
