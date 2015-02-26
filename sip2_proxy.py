@@ -20,6 +20,7 @@ TEST_INTERVAL = 5
 
 # log setting
 LOG_TO_FILE = True
+LOG_TO_MAIL = False
 LOG_FILE_DIR = "/home/sip2_proxy/log/"
 LOG_LEVEL = logging.INFO
 
@@ -60,16 +61,18 @@ def config_logger():
     fmt = logging.Formatter('%(asctime)s %(levelname)s %(message)s')
     handler.setFormatter(fmt)
     logger.addHandler(handler)
-    mail_handeler = BufferingSMTPHandler(mailhost='smtp.stu.edu.cn',
-                                         fromaddr='xdli@stu.edu.cn',
-                                         toaddrs=['xdli@stu.edu.cn'],
-                                         subject='The Sip2 Proxy Error log',
-                                         credentials=('xdli', 'ad4.stu'),
-                                         secure=None,
-                                         capacity=1024)
-    mail_handeler.setLevel(logging.ERROR)
-    mail_handeler.setFormatter(fmt)
-    logger.addHandler(mail_handeler)
+
+    if LOG_TO_MAIL:
+        mail_handeler = BufferingSMTPHandler(mailhost='smtp.stu.edu.cn',
+                                             fromaddr='xdli@stu.edu.cn',
+                                             toaddrs=['xdli@stu.edu.cn'],
+                                             subject='The Sip2 Proxy Error log',
+                                             credentials=('xdli', 'ad4.stu'),
+                                             secure=None,
+                                             capacity=1024)
+        mail_handeler.setLevel(logging.ERROR)
+        mail_handeler.setFormatter(fmt)
+        logger.addHandler(mail_handeler)
 
 
 def log_call_back(log_fun):
