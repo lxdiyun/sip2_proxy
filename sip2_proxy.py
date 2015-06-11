@@ -27,11 +27,13 @@ LOG_LEVEL = logging.INFO
 # server list
 sip2_server_list = [
     ("192.168.64.52", 6001),
+    ("192.168.64.52", 6003),
     ("192.168.64.52", 6005),
-    ("192.168.64.52", 6009),
     ("192.168.64.52", 6007),
+    ("192.168.64.52", 6009),
     ("192.168.64.52", 6011),
     ("192.168.64.53", 6001),
+    ("192.168.64.53", 6003),
     ("192.168.64.53", 6005),
     ("192.168.64.53", 6007),
     ("192.168.64.53", 6009),
@@ -118,7 +120,10 @@ class Sip2Server(Sip2Sock):
             logger.info("Try connect to %s:%s" % self.host)
             self.reset()
             self.create_socket(socket.AF_INET, socket.SOCK_STREAM)
-            self.connect(self.host)
+            try:
+                self.connect(self.host)
+            except Exception as e:
+                logger.exception(e)
             self.callback = CallLater(SERVER_CONNECT_TIMEOUT,
                                       self.handle_connect_timeout)
         else:
